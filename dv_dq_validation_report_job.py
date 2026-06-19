@@ -61,8 +61,8 @@ ARG_NAMES = [
     "JOB_NAME",
 ]
 OPTIONAL_ARG_DEFAULTS = {
-    "DATABASE_NAME": "orderlens",
-    "SCHEMA_LABEL": "ORDERLENS.RAW_VAULT",
+    "DATABASE_NAME": "orderlens_rawvault",
+    "SCHEMA_LABEL": "ORDERLENS.RAWVAULT",
     "OUTPUT_S3_PATH": "s3://yignite-orderlens-miniature-landing/validation_report/",
     "REPORT_TITLE": None,
     "FRESHNESS_STALE_HOURS": "48",
@@ -112,11 +112,11 @@ def list_glue_tables(database):
 
 def classify_table(name):
     n = name.upper()
-    if n.startswith("HUB_"):
+    if n.startswith("HUB_") or n.startswith("H_"):
         return "HUB"
-    if n.startswith("LINK_"):
+    if n.startswith("LINK_") or n.startswith("L_"):
         return "LINK"
-    if n.startswith("SAT_"):
+    if n.startswith("SAT_") or n.startswith("S_"):
         return "SAT"
     return "OTHER"
 
@@ -160,26 +160,36 @@ link_tables = [t for t in catalog if t["type"] == "LINK"]
 sat_tables  = [t for t in catalog if t["type"] == "SAT"]
 
 if not catalog:
+    all_names = [t["Name"] for t in raw_tables]
+    sample = ", ".join(all_names[:25]) if all_names else "(database is empty / not found)"
     raise Exception(
         f"No HUB_*/LINK_*/SAT_* tables found in Glue database '{DATABASE_NAME}'. "
-        f"Check DATABASE_NAME and table naming convention."
+        f"This database currently has {len(all_names)} table(s). First few: {sample}. "
+        f"Check: (1) DATABASE_NAME is the correct Glue Catalog database for your RAW_VAULT layer "
+        f"(it may be different from '{DATABASE_NAME}', e.g. 'orderlens_raw_vault'), "
+        f"(2) your tables actually follow the HUB_/LINK_/SAT_ prefix naming convention."
     )
 
 
-def entity_suffix(table_name, prefix):
-    return table_name[len(prefix):] if table_name.startswith(prefix) else table_name
+PREFIXES = {
+    "HUB":  ["HUB_", "H_"],
+    "LINK": ["LINK_", "L_"],
+    "SAT":  ["SAT_", "S_"],
+}
+
+
+def strip_known_prefix(name, ttype):
+    for p in PREFIXES.get(ttype, []):
+        if name.startswith(p):
+            return name[len(p):]
+    return name
 
 
 def own_hk_column(t):
     """The hash key that THIS table is keyed on, derived from naming convention."""
-    if t["type"] == "HUB":
-        suffix = entity_suffix(t["name"], "HUB_")
-    elif t["type"] == "LINK":
-        suffix = entity_suffix(t["name"], "LINK_")
-    elif t["type"] == "SAT":
-        suffix = entity_suffix(t["name"], "SAT_")
-    else:
+    if t["type"] not in ("HUB", "LINK", "SAT"):
         return None
+    suffix = strip_known_prefix(t["name"], t["type"])
     candidate = f"{suffix}_HK"
     # fall back to whichever _HK column is present if convention guess is wrong
     if candidate in t["hk_columns"]:
