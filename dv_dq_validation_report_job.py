@@ -123,9 +123,21 @@ def classify_table(name):
 
 # Common synonyms for the standard Data Vault audit columns, in priority order.
 SYNONYMS = {
-    "LOAD_DTS":      ["LOAD_DTS", "LOAD_DATE", "LOAD_TS", "DV_LOAD_DTS"],
-    "RECORD_SOURCE": ["RECORD_SOURCE", "RECORD_SRC", "REC_SRC", "DV_RECORD_SOURCE"],
-    "HASH_DIFF":     ["HASH_DIFF", "HASHDIFF", "HASH_DIFF_COL", "DV_HASHDIFF"],
+    "LOAD_DTS":      ["LOAD_DTS", "LOAD_DATE", "LOAD_TS", "LOAD_TIMESTAMP", "LOADED_AT",
+                       "LOAD_DATETIME", "DV_LOAD_DTS", "BATCH_LOAD_DATE", "INSERT_DTS",
+                       "ETL_LOAD_DTS", "DWH_LOAD_DATE", "CREATED_DTS"],
+    "RECORD_SOURCE": ["RECORD_SOURCE", "RECORD_SRC", "REC_SRC", "SOURCE_SYSTEM",
+                       "DV_RECORD_SOURCE", "SRC_SYSTEM", "DATA_SOURCE", "SOURCE_NAME"],
+    "HASH_DIFF":     ["HASH_DIFF", "HASHDIFF", "HASH_DIFF_COL", "DV_HASHDIFF",
+                       "HDIFF", "ROW_HASH", "HASH_DIFF_VAL"],
+}
+
+# Fuzzy fallback: if no exact synonym matches, pick the first column whose name
+# contains ALL of these substrings (checked in order, first match wins).
+FUZZY_RULES = {
+    "LOAD_DTS":      [["LOAD"], ["BATCH"], ["INSERT"], ["CREATED"]],
+    "RECORD_SOURCE": [["SOURCE"], ["SRC"]],
+    "HASH_DIFF":     [["HASH"], ["DIFF"]],
 }
 
 
@@ -133,6 +145,10 @@ def resolve_column(columns_upper, logical_name):
     for cand in SYNONYMS.get(logical_name, [logical_name]):
         if cand in columns_upper:
             return cand
+    for rule in FUZZY_RULES.get(logical_name, []):
+        for col in columns_upper:
+            if all(part in col for part in rule):
+                return col
     return None
 
 
@@ -158,6 +174,22 @@ for t in raw_tables:
 hub_tables  = [t for t in catalog if t["type"] == "HUB"]
 link_tables = [t for t in catalog if t["type"] == "LINK"]
 sat_tables  = [t for t in catalog if t["type"] == "SAT"]
+
+# Diagnostic logging — visible in the Glue job run's CloudWatch log, so you can
+# see exactly which audit column was resolved (or NOT resolved -> None) per
+# table. Tables missing LOAD_DTS/RECORD_SOURCE/HASH_DIFF lose entire
+# Freshness/Volume/Source checks for that table, which is the #1 reason a run
+# comes back with far fewer checks than expected.
+print("──── Column resolution per table ────────────────────────────")
+for t in catalog:
+    missing = [k for k, v in [("LOAD_DTS", t["load_dts_col"]),
+                               ("RECORD_SOURCE", t["record_source_col"]),
+                               ("HASH_DIFF", t["hash_diff_col"])] if v is None]
+    print(f"  {t['name']:<32} type={t['type']:<4} "
+          f"load_dts={t['load_dts_col']!s:<20} record_source={t['record_source_col']!s:<20} "
+          f"hash_diff={t['hash_diff_col']!s:<20} hk_cols={t['hk_columns']}"
+          + (f"   <-- MISSING: {missing}" if missing else ""))
+print("──────────────────────────────────────────────────────────────")
 
 if not catalog:
     all_names = [t["Name"] for t in raw_tables]
