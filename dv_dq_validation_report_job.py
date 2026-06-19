@@ -28,17 +28,17 @@ derived from:
 Run as a Glue job (Glue 4.0 / Spark 3.x, Python 3) with these arguments:
 
   --JOB_NAME                 dv_dq_validation_report
-  --DATABASE_NAME             sales_opsplanning_raw_vault      (Glue DB w/ HUB/LINK/SAT tables)
-  --SCHEMA_LABEL              "SALES_OPSPLANNING.RAW_VAULT"    (label shown in the report header)
-  --OUTPUT_S3_PATH            s3://my-bucket/dq-reports/       (trailing slash optional)
-  --REPORT_TITLE              "SALES_OPSPLANNING"              (optional, defaults to DATABASE_NAME upper)
+  --DATABASE_NAME             orderlens                        (optional — this is the default; Glue DB w/ HUB/LINK/SAT tables)
+  --SCHEMA_LABEL              "ORDERLENS.RAW_VAULT"            (optional — this is the default; label shown in the report header)
+  --OUTPUT_S3_PATH            s3://yignite-orderlens-miniature-landing/validation_report/  (optional — this is the default)
+  --REPORT_TITLE              "ORDERLENS"                       (optional, defaults to DATABASE_NAME upper)
   --FRESHNESS_STALE_HOURS     48                                (optional, default 48)
   --SPIKE_MULTIPLIER          5                                 (optional, default 5)
   --MART_DATABASE_NAME        sales_opsplanning_information_mart (optional, informational only)
 
 Output:
-  s3://<OUTPUT_S3_PATH>/dv_validation_report_<database>.html
-  s3://<OUTPUT_S3_PATH>/dv_validation_report_<database>.json   (machine-readable summary)
+  s3://yignite-orderlens-miniature-landing/validation_report/dv_validation_report_<database>.html
+  s3://yignite-orderlens-miniature-landing/validation_report/dv_validation_report_<database>.json
 ===============================================================================
 """
 
@@ -58,9 +58,12 @@ from pyspark.context import SparkContext
 # 0. JOB BOOTSTRAP & ARGS
 # ──────────────────────────────────────────────────────────────────────────────
 ARG_NAMES = [
-    "JOB_NAME", "DATABASE_NAME", "SCHEMA_LABEL", "OUTPUT_S3_PATH",
+    "JOB_NAME",
 ]
 OPTIONAL_ARG_DEFAULTS = {
+    "DATABASE_NAME": "orderlens",
+    "SCHEMA_LABEL": "ORDERLENS.RAW_VAULT",
+    "OUTPUT_S3_PATH": "s3://yignite-orderlens-miniature-landing/validation_report/",
     "REPORT_TITLE": None,
     "FRESHNESS_STALE_HOURS": "48",
     "SPIKE_MULTIPLIER": "5",
